@@ -3,59 +3,80 @@ package uarm
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 )
 
-func (arm *Arm) MoveTo(x, y, z, rate int) error {
-	start := make(chan bool, 0)
-	response := make(chan string)
+// MoveXYZ moves the uArm to a specified point (mm) at a given rate (mm/min) if relative is false.
+// It moves the uArm by a specified amount (mm) at a given rate (mm/min) if relative if true
+// It returns the response from the arm or any error encountered.
+// This function is largely untested. As of 9/8/2017 the firmware on the uArm can return early, before the
+// arm reaches the desired position. As such, this function does not return until it has confirmed the arm has moved
+// into position.
+// TODO: Return on error
+// TODO: Validate response and return on response error
+func (arm *Arm) MoveXYZ(x, y, z, rate int, relative bool) (string, error) {
+	cmd := "G0" // Absolute movement
+	if relative {
+		cmd = "G2204"
+	}
 
-	// TODO: Move this inside of the for loop
+	cmdSent := false
+	respChan := make(chan string)
+	respStr := ""
+	respLock := sync.RWMutex{}
+
+	// Wait for the response on another thread and update the response placeholder with a lock
 	go func() {
-		<-start
-		r, err := arm.SendRaw(fmt.Sprintf("G0 X%d Y%d Z%d F%d", x, y, z, rate))
-		if err != nil {
-			arm.Logf("INFO", "WARNING: SendRaw error: %v", err)
-		}
-		response <- r
+		// TODO: Validate here
+		msg := <-respChan
+		respLock.Lock()
+		defer respLock.Unlock()
+		respStr = msg
+		return
 	}()
 
 	i := 0
 	for {
 		i++
-		// TODO: Implement
 		// TODO: Handle errors
 		// Step 1 - Get delta between current position and desired position
-		delta, _ := arm.getPositionDelta(x, y, z, rate)
+		delta, _ := arm.getXYZDelta(x, y, z, rate)
 		if delta < 1 {
 			arm.Logf("INFO", "it took %d attempts to move\n", i)
-			return nil
+			respLock.RLock()
+			defer respLock.RUnlock()
+			return respStr, nil
 		}
 		// Step 2 - Calculate travel time & start a timer
 		tt, _ := arm.getTravelTimeToPosition(delta, rate)
 		timer := time.NewTimer(tt)
 
-		// Step 3 - (once) Start movement
-		select {
-		case start <- true:
-		default:
+		// Step 3 - (once) Start movement and push the response onto the response channel
+		if !cmdSent {
+			go func() {
+				r, err := arm.SendRaw(fmt.Sprintf("%s X%d Y%d Z%d F%d", cmd, x, y, z, rate))
+				if err != nil {
+					arm.Logf("INFO", "WARNING: SendRaw error: %v", err)
+				}
+				respChan <- r
+			}()
+			cmdSent = true
 		}
 
-		// Step 4 - On timeout go to step 1
+		// Step 4 - Wait for the timeout before repeating
 		<-timer.C
-		// TODO: Do something with the response / validate it
-		go func() { <-response }() // Drain the response channel
 	}
 
 }
 
-func (arm *Arm) getPositionDelta(x, y, z, rate int) (delta float64, err error) {
-	cx, cy, cz, err := arm.GetCurrentPos()
+func (arm *Arm) getXYZDelta(dx, dy, dz, rate int) (delta float64, err error) {
+	cx, cy, cz, err := arm.GetCurrentPosXYZ()
 	if err != nil {
 		err = fmt.Errorf("unable to read current position: %v", err)
 		return
 	}
-	delta = math.Abs(cx-float64(x)) + math.Abs(cy-float64(y)) + math.Abs(cz-float64(z))
+	delta = math.Abs(cx-float64(dx)) + math.Abs(cy-float64(dy)) + math.Abs(cz-float64(dz))
 	arm.Logf("INFO", "Calculated delta: %v mm\n", delta)
 	return
 }

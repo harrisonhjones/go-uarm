@@ -42,14 +42,6 @@ func (arm *Arm) SendRaw(cmd string) (response string, err error) {
 	return
 }
 
-func (arm *Arm) MustSendRaw(cmd string) (response string) {
-	if response, err := arm.SendRaw(cmd); err != nil {
-		panic(err.Error())
-	} else {
-		return response
-	}
-}
-
 func (arm *Arm) monitor() {
 	for {
 		scanner := bufio.NewScanner(arm.conn)
@@ -73,7 +65,6 @@ func (arm *Arm) monitor() {
 			case strings.HasPrefix(line, "@"):
 				arm.Logf("INFO", "Incoming event: %v\n", line)
 			default:
-				//fmt.Printf("\tUnknown command: %v\n", line)
 			}
 		}
 		if err := scanner.Err(); err != nil {

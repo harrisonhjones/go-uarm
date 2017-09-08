@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func (arm *Arm) GetCurrentPos() (x, y, z float64, err error) {
+func (arm *Arm) GetCurrentPosXYZ() (x, y, z float64, err error) {
 	response, err := arm.SendRaw("P2220")
 	if err != nil {
 		arm.Logf("INFO", "GetCurrentPos Error: %v\n", err)

@@ -23,11 +23,9 @@ func main() {
 	arm, _ := uarm.New(s)
 	time.Sleep(time.Millisecond * 5000)
 
-	/*response := arm.MustSendRaw("P2234")
-	log.Printf("Response: %s\n", response)*/
 	rate := 5000
 	for {
-		arm.MoveTo(25, 0, 0, rate)
-		arm.MoveTo(25, 5, 25, rate)
+		arm.MoveXYZ(25, 0, 0, rate, false)
+		arm.MoveXYZ(25, 5, 25, rate, false)
 	}
 }
